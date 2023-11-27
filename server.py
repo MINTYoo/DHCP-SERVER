@@ -33,7 +33,9 @@ def dhcp_operation(parsed_message):
     response = ""
     if request == "LIST":
         print("were in LIST!")
-        response = "\n".join([f"{record} {records[record]}" for record in records])
+        filtered_records = {mac: record for mac, record in records.items() if record["Acked"]} 
+        response = "\n".join([f"{mac} {record}" for mac, record in filtered_records.items()])
+        
     elif request == "DISCOVER":
         mac = parsed_message[1]
         timestamp = datetime.now()
@@ -52,13 +54,11 @@ def dhcp_operation(parsed_message):
                 print("Response:", response)
 
             elif records[mac]['timestamp'] + timedelta(seconds=60) > datetime.now():
-                print("test2")
                 records[mac]['Acked'] = True
                 response = f"ACKNOWLEDGE : {mac} {records['ip_address']} {records[mac]['timestamp']}"
         else:
             for ip in ip_addresses:        
                 if ip not in [record['ip_address'] for record in records.values()]:
-                    print("test3")
                     records[mac] = {
                         "ip_address": ip,
                         "timestamp": datetime.now() + timedelta(seconds=60),
@@ -68,7 +68,7 @@ def dhcp_operation(parsed_message):
                     break
 
                 else:
-                    for existing_mac  in records:
+                    for existing_mac in records:
                         if records["timestamp"] < datetime.now() - timedelta(seconds=60):
                             print("test4")
                             records[existing_mac] = {
@@ -89,7 +89,7 @@ def dhcp_operation(parsed_message):
         if mac in records and records[mac]["ip_address"] == ip_address:
             if records[mac]["timestamp"] + timedelta(seconds=60) > datetime.now():
                 records[mac]["Acked"] = True
-                response = (f"ACKNOWLEDGE {mac} {ip_address} {timestamp} \nIP address {ip_address} was assigned to this client, which will be expired at time {records[mac]['timestamp']}")
+                response = (f"ACKNOWLEDGE {mac} {ip_address} {timestamp} \nIP address {ip_address} was assigned to this client, which will be expired at time {records[mac]['timestamp'] + timedelta(seconds=60)}")
             else:
                 response = ("DECLINE")
         else:
@@ -97,12 +97,17 @@ def dhcp_operation(parsed_message):
 
     elif request == "RELEASE":
         mac = parsed_message[1]
-        if mac in records:
+        if mac in records and records[mac]["Acked"]:
             records[mac] = {
                 "ip_address" : "",
                 "timestamp": datetime.now() + timedelta(seconds=60),
                 "Acked": False,
             }
+            response = "succesfully released IP address"
+        elif mac in records and  not records[mac]["Acked"]:
+            response = f"IP address from {mac} has already been released"
+        else:
+            response = f"IP address from {mac} not found in records."
     elif request == "RENEW":
             mac = parsed_message[1]
             print("Inside RENEW case")
