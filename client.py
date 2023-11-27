@@ -1,91 +1,118 @@
 #!/usr/bin/env python3
 import uuid
 import socket
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Time operations in python
 # timestamp = datetime.fromisoformat(isotimestring)
 
 # Extract local MAC address [DO NOT CHANGE]
 MAC = ":".join(["{:02x}".format((uuid.getnode() >> ele) & 0xFF) for ele in range(0, 8 * 6, 8)][::-1]).upper()
-
+offer = False
 # SERVER IP AND PORT NUMBER [DO NOT CHANGE VAR NAMES]
 SERVER_IP = "10.0.0.100"
 SERVER_PORT = 9000
 
 
+def parse_message(message):
+    if isinstance(message, bytes):
+        decoded_message = message.decode()
+        return decoded_message.split()
+    elif isinstance(message, str):
+        return message.split()
+    else:
+        raise ValueError("Invalid message type. Expected bytes or str.")
+
+
+def checkClientMac(macAdd):
+    if MAC == macAdd:
+        return True
+    else:
+        return False
+
 clientSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+clientSocket.settimeout(8)  # Set a timeout value in seconds
 
-# Sending DISCOVER message
-message = "DISCOVER " + MAC
-clientSocket.sendto(message.encode(), (SERVER_IP, SERVER_PORT))
-# LISTENING FOR RESPONSE
-message, _ = clientSocket.recvfrom(4096)
-message_data = message.decode().split()
+def send_message(message):
+    clientSocket.sendto(message.encode(), (SERVER_IP, SERVER_PORT))
+    response, _ = clientSocket.recvfrom(4096)
+    return response.decode()
 
-if message_data[0] == "OFFER":
-    mac = message_data[1]
-    offered_ip_add = message_data[2]
-    timestamp = message_data[3]
-    print(f"Server offered IP address {offered_ip_add} to client with MAC address {mac}.")
-     # LISTENING FOR ACKNOWLEDGE OR DECLINE
-    ack_response, _ = clientSocket.recvfrom(4096)
-    ack_response_data = ack_response.decode().split()
+def checkTimeStamp(time):
+    timestamp = datetime.fromisoformat(time)
+    expiration_time = datetime.now() + timedelta(seconds=60)
 
-    if ack_response_data[0] == "ACKNOWLEDGE":
-        # Extract information from the ACKNOWLEDGE message
-        ack_server_mac = ack_response_data[1]
-        ack_assigned_ip = ack_response_data[2]
-        ack_timestamp = ack_response_data[3]
+    if timestamp < expiration_time:
+        return True
+    else:
+        return False
+    
+    
+def handleDiscover(message):
+    response = message[0][:-1]
+    clientmac = message[1]
+    clientIP = message[2]
+    clientTimeStamp = message[3]
+    if response == "OFFER":
+        if checkClientMac(clientmac):
+            if checkTimeStamp(clientTimeStamp): #possible error
+                request_message = f"REQUEST {clientmac} {clientIP} {clientTimeStamp}"
+                clientSocket.sendto(request_message.encode(), ("127.0.0.1", 9000))
+                ACK_response, _ = clientSocket.recvfrom(4096)
+                print(f"Received: {ACK_response.decode()}")
+        else:
+            print("Timestamp has expired. Exiting.")
+            quit()
+    elif(response == "ACKNOWLEDGE"):
+        if not checkClientMac(clientmac):
+            print("Invalid MAC address in ACKNOWLEDGE message. Exiting.")
+            quit()
+        else:
+            #ACK_response, _ = clientSocket.recvfrom(4096) // possible error
+            print(f"Received: {message}")
+try:
+    # Sending DISCOVER message
+    discover_message = f"DISCOVER {MAC} "
+    print(f"Sending: {discover_message}")
+    clientSocket.sendto(discover_message.encode(), ("127.0.0.1", 9000))
+    
+    # Print received response
+    response, _ = clientSocket.recvfrom(4096)
+    print(f"Received Response: {response.decode()}")
+    parsed_message = parse_message(response)
+    handleDiscover(parsed_message)
+     #print(f"Received: {response.decode()}")
+    while True:
+        print("Choose an option:")
+        print("1. Renew")
+        print("2. Release")
+        print("3. List")
+        print("4. Quit")
 
-        # Display relevant information to the user
-        print(f"Server acknowledged IP address {ack_assigned_ip} for client with MAC address {ack_server_mac}.")
-        
-        # TODO: Implement further client logic based on the acknowledged IP address.
-    # LISTENING FOR ACKNOWLEDGE OR DECLINE
-    ack_response, _ = clientSocket.recvfrom(4096)
-    ack_response_data = ack_response.decode().split()
+        choice = input("Enter your choice: ")
 
-    if ack_response_data[0] == "ACKNOWLEDGE":
-        # Extract information from the ACKNOWLEDGE message
-        ack_server_mac = ack_response_data[1]
-        ack_assigned_ip = ack_response_data[2]
-        ack_timestamp = ack_response_data[3]
-
-        # Display relevant information to the user
-        print(f"Server acknowledged IP address {ack_assigned_ip} for client with MAC address {ack_server_mac}.")
-        
-        # TODO: Implement further client logic based on the acknowledged IP address.
-
-        # Simulate sending a RENEW message
-        renew_message = f"RENEW {MAC} {ack_assigned_ip} {ack_timestamp}"
-        clientSocket.sendto(renew_message.encode(), (SERVER_IP, SERVER_PORT))
-
-        # LISTENING FOR RENEW ACKNOWLEDGE OR DECLINE
-        renew_ack_response, _ = clientSocket.recvfrom(4096)
-        renew_ack_response_data = renew_ack_response.decode().split()
-
-        if renew_ack_response_data[0] == "ACKNOWLEDGE":
-            # Extract information from the RENEW ACKNOWLEDGE message
-            renew_ack_server_mac = renew_ack_response_data[1]
-            renew_ack_assigned_ip = renew_ack_response_data[2]
-            renew_ack_timestamp = renew_ack_response_data[3]
-
-            # Display relevant information to the user
-            print(f"Server renewed IP address {renew_ack_assigned_ip} for client with MAC address {renew_ack_server_mac}.")
-
-        elif renew_ack_response_data[0] == "DECLINE":
-            # Display a message indicating that the server declined the renew request
-            print("Server declined the renew request. Please try again.")
-
-        # Simulate sending a RELEASE message
-        release_message = f"RELEASE {MAC} {ack_assigned_ip} {ack_timestamp}"
-        clientSocket.sendto(release_message.encode(), (SERVER_IP, SERVER_PORT))
-
-        # Display a message indicating that the client released the IP address
-        print(f"Client released IP address {ack_assigned_ip}.")
-    elif ack_response_data[0] == "DECLINE":
-        # Display a message indicating that the server declined the request
-        print("Server declined the request. Please try again.")
-
-clientSocket.close()
+        if choice == "1":
+            renew_message = f"RENEW {MAC} {datetime.now().isoformat()}"
+            clientSocket.sendto(renew_message.encode(), ("127.0.0.1", 9000))
+            renew_response, _ = clientSocket.recvfrom(4096)
+            print(f"Received: {renew_response.decode()}")
+        elif choice == "2":
+            release_message = f"RELEASE {MAC} {datetime.now().isoformat()}"
+            clientSocket.sendto(release_message.encode(), ("127.0.0.1", 9000))
+            release_response, _ = clientSocket.recvfrom(4096)
+        elif choice == "3":
+            List = f"LIST"
+            clientSocket.sendto(List.encode(), ("127.0.0.1", 9000))
+            list_response, _ = clientSocket.recvfrom(4096)
+            print(f"list_response: {list_response.decode()}")
+        elif choice == "4":
+            print("Quitting the client program.")
+            break
+        else:
+            print("Invalid choice. Please choose a valid option.")
+except socket.timeout:
+    print("Timeout: No response received from the server.")
+except Exception as e:
+    print(f"An unexpected error occurred: {e}")
+finally:
+    clientSocket.close()
