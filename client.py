@@ -100,6 +100,7 @@ try:
             release_message = f"RELEASE {MAC} {datetime.now().isoformat()}"
             clientSocket.sendto(release_message.encode(), ("127.0.0.1", 9000))
             release_response, _ = clientSocket.recvfrom(4096)
+            print(f"Received: {release_response.decode()}")
         elif choice == "3":
             List = f"LIST"
             clientSocket.sendto(List.encode(), ("127.0.0.1", 9000))
