@@ -23,7 +23,7 @@ while True:
 
         choice = input("Enter your choice: ")
         if choice == "1":
-            List = f"LIST"
+            List = "LIST"
             clientSocket.sendto(List.encode(), ("127.0.0.1", 9000))
             list_response, _ = clientSocket.recvfrom(4096)
             print(f"list_response: {list_response.decode()}")
